@@ -8,7 +8,11 @@
 #include <netinet/ip_icmp.h>
 #include <signal.h>
 
+#define RECV_SUCC 0
+#define RECV_FAIL 1
+
 void send_request(unsigned char *);
+int recv_response(unsigned char *);
 unsigned short check_sum(unsigned short *addr, int len);
 
 int sd;
@@ -20,9 +24,6 @@ int main(int argc, char *argv[]){
   unsigned char *rx_packet = malloc(BUFSIZ);
   unsigned char *tx_packet = malloc(BUFSIZ);
 
-  struct iphdr *rx_iph;
-  struct icmphdr *rx_icmph;
-
   if(argc != 2){
     printf("USAGE : ping [IP ADDRESS]\n");
     exit(-1);
@@ -31,7 +32,7 @@ int main(int argc, char *argv[]){
   bzero(&remote, sizeof(remote));
   remote.sin_addr.s_addr = inet_addr(argv[1]);
   remote.sin_family = AF_INET;
-  pid_t id = htons(getpid());
+  pid_t id = htons(getpid()) & 0xffff;
 
   if((sd = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0){
     printf("socket open error\n");
@@ -39,44 +40,13 @@ int main(int argc, char *argv[]){
   }
 
   while(1){
-    bzero(tx_packet, BUFSIZ);
     send_request(tx_packet);
 
-    if((len = recvfrom(sd, rx_packet, BUFSIZ, 0, NULL, NULL)) < 0){
-      printf("recvfrom error\n");
-      exit(-2);
-    }
+    while(recv_response(rx_packet) == RECV_FAIL);
 
-    rx_iph = (struct iphdr *)(rx_packet);
-
-    if(rx_iph->protocol != 0x01){
-      continue;
-    }
-
-    rx_icmph = (struct icmphdr *)(rx_packet + rx_iph->ihl * 4);
-
-    if(rx_icmph->type != ICMP_ECHOREPLY){
-      printf("type 0x%04x\n", rx_icmph->type);
-      printf("%d Bytes from %s %dTTL \n", ntohs(rx_iph->tot_len), inet_ntoa(rx_iph->saddr), rx_iph->ttl);
-      return -1;
-      //continue;
-    }
-
-    if(rx_icmph->un.echo.id != id){
-      printf("id 0x%04x\n", ntohs(rx_icmph->un.echo.id));
-      return -1;
-      //continue;
-    }
-
-    if(ntohs(rx_icmph->un.echo.sequence) != (seq-1)){
-      printf("seq 0x%04x 0x%04x\n", ntohs(rx_icmph->un.echo.sequence), seq-1);
-      return -1;
-      //continue;
-    }
-
-    printf("%d Bytes from %s %dTTL \n", ntohs(rx_iph->tot_len), inet_ntoa(rx_iph->saddr), rx_iph->ttl);
-
+    sleep(1);
   }
+  
   close(sd);
   free(tx_packet);
   free(rx_packet);
@@ -84,7 +54,7 @@ int main(int argc, char *argv[]){
 }
 
 void send_request(unsigned char *tx_packet){
-    bzero(tx_packet, sizeof(tx_packet));
+    bzero(tx_packet, sizeof(*tx_packet));
     struct icmphdr *tx_icmph = (struct icmphdr *)(tx_packet);
 
     tx_icmph->type = ICMP_ECHO;
@@ -95,9 +65,51 @@ void send_request(unsigned char *tx_packet){
     tx_icmph->checksum = check_sum((unsigned short *)tx_icmph, sizeof(*tx_icmph));
 
     if((sendto(sd, tx_icmph, sizeof(*tx_icmph), 0, (struct sockaddr *)(&remote), sizeof(remote))) < 0){
-      printf("sendto error\n", );
+      printf("sendto error\n");
       exit(-1);
     }
+}
+
+int recv_response(unsigned char *rx_packet){
+  static struct iphdr *rx_iph;
+  static struct icmphdr *rx_icmph;
+  static struct sockaddr_in recv;
+  static int len = sizeof(recv);
+
+  bzero(rx_packet, sizeof(*rx_packet));
+  bzero(&recv, sizeof(recv));
+  
+  if((recvfrom(sd, rx_packet, BUFSIZ, 0, (struct sockaddr *)&recv, &len)) < 0){
+    printf("recvfrom error\n");
+    return RECV_FAIL;
+  }
+
+  rx_iph = (struct iphdr *)(rx_packet);
+
+  if(rx_iph->protocol != 0x01){
+    return RECV_FAIL;
+  }
+
+  if(rx_iph->saddr != remote.sin_addr.s_addr){
+    return RECV_FAIL;
+  }
+  
+  rx_icmph = (struct icmphdr *)(rx_packet + rx_iph->ihl * 4);
+
+  if(rx_icmph->type != ICMP_ECHOREPLY){
+    return RECV_FAIL;
+  }
+
+  if(rx_icmph->un.echo.id != id){
+    return RECV_FAIL;
+  }
+
+  if(ntohs(rx_icmph->un.echo.sequence) != (seq-1)){
+    return RECV_FAIL;
+  }
+
+  printf("%d Bytes from %s %dTTL \n", ntohs(rx_iph->tot_len), inet_ntoa(rx_iph->saddr), rx_iph->ttl);
+  return RECV_SUCC;
 }
 
 unsigned short check_sum(unsigned short *ip, int len){
