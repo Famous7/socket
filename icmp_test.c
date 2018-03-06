@@ -1,19 +1,22 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
+#include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in_systm.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
-#include <signal.h>
+#include <sys/time.h>
 
 #define RECV_SUCC 0
 #define RECV_FAIL 1
 
 void send_request(unsigned char *);
 int recv_response(unsigned char *);
-unsigned short check_sum(unsigned short *addr, int len);
+unsigned short check_sum(unsigned short *, int);
+void tv_sub(struct timeval *, struct timeval *);
 
 int sd;
 struct sockaddr_in remote;
@@ -55,14 +58,15 @@ int main(int argc, char *argv[]){
 
 void send_request(unsigned char *tx_packet){
     bzero(tx_packet, sizeof(*tx_packet));
-    struct icmphdr *tx_icmph = (struct icmphdr *)(tx_packet);
+    struct icmp *tx_icmph = (struct icmp *)(tx_packet);
 
-    tx_icmph->type = ICMP_ECHO;
-    tx_icmph->code = 0;
-    tx_icmph->un.echo.id = id;
-    tx_icmph->un.echo.sequence = htons(seq++);
-    tx_icmph->checksum = 0;
-    tx_icmph->checksum = check_sum((unsigned short *)tx_icmph, sizeof(*tx_icmph));
+    tx_icmph->icmp_type = ICMP_ECHO;
+    tx_icmph->icmp_code = 0;
+    tx_icmph->icmp_id = id;
+    tx_icmph->icmp_seq = htons(seq++);
+    gettimeofday((struct timeval *)tx_icmph->icmp_data, NULL);
+    tx_icmph->icmp_cksum = 0;
+    tx_icmph->icmp_cksum = check_sum((unsigned short *)tx_icmph, sizeof(*tx_icmph));
 
     if((sendto(sd, tx_icmph, sizeof(*tx_icmph), 0, (struct sockaddr *)(&remote), sizeof(remote))) < 0){
       printf("sendto error\n");
@@ -72,9 +76,14 @@ void send_request(unsigned char *tx_packet){
 
 int recv_response(unsigned char *rx_packet){
   static struct iphdr *rx_iph;
-  static struct icmphdr *rx_icmph;
+  static struct icmp *rx_icmph;
   static struct sockaddr_in recv;
   static int len = sizeof(recv);
+  static struct timeval *tv_snd;
+
+  struct timeval tv_recv;
+  
+  double rtt;
 
   bzero(rx_packet, sizeof(*rx_packet));
   bzero(&recv, sizeof(recv));
@@ -84,31 +93,45 @@ int recv_response(unsigned char *rx_packet){
     return RECV_FAIL;
   }
 
+  gettimeofday(&tv_recv, NULL);
+
   rx_iph = (struct iphdr *)(rx_packet);
 
-  if(rx_iph->protocol != 0x01){
+  if(rx_iph->protocol != IPPROTO_ICMP){
+    printf("protocol\n");
     return RECV_FAIL;
   }
 
   if(rx_iph->saddr != remote.sin_addr.s_addr){
+    printf("addr\n");
     return RECV_FAIL;
   }
   
-  rx_icmph = (struct icmphdr *)(rx_packet + rx_iph->ihl * 4);
+  rx_icmph = (struct icmp *)(rx_packet + rx_iph->ihl * 4);
 
-  if(rx_icmph->type != ICMP_ECHOREPLY){
+  if(rx_icmph->icmp_type != ICMP_ECHOREPLY){
+    printf("type\n");
     return RECV_FAIL;
   }
 
-  if(rx_icmph->un.echo.id != id){
+  if(rx_icmph->icmp_id != id){
+    printf("id\n");
     return RECV_FAIL;
   }
 
-  if(ntohs(rx_icmph->un.echo.sequence) != (seq-1)){
+  if(ntohs(rx_icmph->icmp_seq) != (seq-1)){
+    printf("seq\n");
     return RECV_FAIL;
   }
 
-  printf("%d Bytes from %s %dTTL \n", ntohs(rx_iph->tot_len), inet_ntoa(rx_iph->saddr), rx_iph->ttl);
+  tv_snd = (struct timeval *)rx_icmph->icmp_data;
+
+  tv_sub(&tv_recv, tv_snd);
+
+  rtt = (tv_recv.tv_sec) / 1000 + (tv_recv.tv_usec) * 1000;
+
+
+  printf("%d bytes from %s icmp_seq=%d ttl=%d time=%.2f ms\n", (ntohs(rx_iph->tot_len) - rx_iph->ihl*4), inet_ntoa(rx_iph->saddr), ntohs(rx_icmph->icmp_seq), rx_iph->ttl, rtt);
   return RECV_SUCC;
 }
 
@@ -130,4 +153,13 @@ unsigned short check_sum(unsigned short *ip, int len){
     sum = (sum >> 16) + (sum & 0xffff);
 
   return ~sum;
+}
+
+void tv_sub(struct timeval *out, struct timeval *in){
+  if((out->tv_usec -= in->tv_usec) < 0){
+    --(out->tv_sec);
+    out->tv_usec += 1000000;
+  }
+
+  out->tv_sec -= in->tv_sec;
 }
