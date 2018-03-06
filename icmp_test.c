@@ -8,29 +8,30 @@
 #include <netinet/ip_icmp.h>
 #include <signal.h>
 
+void send_request(unsigned char *);
 unsigned short check_sum(unsigned short *addr, int len);
 
-int main(int argc, char *argv[]){
-  int sd;
-  int len;
-  unsigned short seq = 0x01;
+int sd;
+struct sockaddr_in remote;
+pid_t id;
+unsigned short seq = 0x01;
 
-  char *rx_packet = malloc(BUFSIZ);
-  char *tx_packet = malloc(BUFSIZ);
+int main(int argc, char *argv[]){
+  unsigned char *rx_packet = malloc(BUFSIZ);
+  unsigned char *tx_packet = malloc(BUFSIZ);
 
   struct iphdr *rx_iph;
   struct icmphdr *rx_icmph;
-  struct iphdr *tx_iph;
-  struct icmphdr *tx_icmph;
-
-  struct sockaddr_in local, remote;
-
-  pid_t id = htons(getpid());
 
   if(argc != 2){
     printf("USAGE : ping [IP ADDRESS]\n");
     exit(-1);
   }
+
+  bzero(&remote, sizeof(remote));
+  remote.sin_addr.s_addr = inet_addr(argv[1]);
+  remote.sin_family = AF_INET;
+  pid_t id = htons(getpid());
 
   if((sd = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0){
     printf("socket open error\n");
@@ -39,26 +40,8 @@ int main(int argc, char *argv[]){
 
   while(1){
     bzero(tx_packet, BUFSIZ);
+    send_request(tx_packet);
 
-    tx_icmph = (struct icmphdr *)(tx_packet);
-    tx_icmph->type = ICMP_ECHO;
-    tx_icmph->code = 0;
-    tx_icmph->un.echo.id = id;
-    tx_icmph->un.echo.sequence = htons(seq++);
-    tx_icmph->checksum = 0;
-
-    tx_icmph->checksum = check_sum((unsigned short *)tx_icmph, sizeof(*tx_icmph));
-
-    bzero(&remote, sizeof(remote));
-    remote.sin_addr.s_addr = inet_addr(argv[1]);
-    remote.sin_family = AF_INET;
-
-    if((len = sendto(sd, tx_icmph, sizeof(*tx_icmph), 0, (struct sockaddr *)&remote, sizeof(remote))) < 0){
-      printf("sendto error\n");
-      exit(-2);
-    }
-    
-    
     if((len = recvfrom(sd, rx_packet, BUFSIZ, 0, NULL, NULL)) < 0){
       printf("recvfrom error\n");
       exit(-2);
@@ -95,8 +78,26 @@ int main(int argc, char *argv[]){
 
   }
   close(sd);
-
+  free(tx_packet);
+  free(rx_packet);
   return 0;
+}
+
+void send_request(unsigned char *tx_packet){
+    bzero(tx_packet, sizeof(tx_packet));
+    struct icmphdr *tx_icmph = (struct icmphdr *)(tx_packet);
+
+    tx_icmph->type = ICMP_ECHO;
+    tx_icmph->code = 0;
+    tx_icmph->un.echo.id = id;
+    tx_icmph->un.echo.sequence = htons(seq++);
+    tx_icmph->checksum = 0;
+    tx_icmph->checksum = check_sum((unsigned short *)tx_icmph, sizeof(*tx_icmph));
+
+    if((sendto(sd, tx_icmph, sizeof(*tx_icmph), 0, (struct sockaddr *)(&remote), sizeof(remote))) < 0){
+      printf("sendto error\n", );
+      exit(-1);
+    }
 }
 
 unsigned short check_sum(unsigned short *ip, int len){
