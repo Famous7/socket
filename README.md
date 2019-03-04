@@ -7,7 +7,9 @@
   * -o : 정렬 방식, A/오름차순, D/내림차순
   * -i : 정렬할 배열
  
-<pre><code>$ python3 py_quick_sort.py -o A -i 1 2 5 3 6 0 10</code></pre>
+<pre><code>$ python3 assignment_1.py -o A -i 1 2 5 3 6 0 10</code></pre>
+
+
 
 ### Code 설명
 
