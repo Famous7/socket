@@ -9,7 +9,7 @@
  
 <pre><code>$ python3 assignment_1.py -o A -i 1 2 5 3 6 0 10</code></pre>
 
-
+![result.png](./result.png)
 
 ### Code 설명
 
