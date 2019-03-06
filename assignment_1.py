@@ -37,7 +37,8 @@ if __name__ == "__main__":
         print("Wrong argvs : {}".format(argv))
         sys.exit()        
 
-    arr = list(map(int, argv[4:]))
+    #arr = list(map(int, argv[4:])) you can also use the map function
+    arr = [int(x) for x in argv[4:]]
 
     if argv[(argv.index("-o"))+1] == "A":
         quick_sort(arr, 0, len(arr), lambda x, y : x < y)
