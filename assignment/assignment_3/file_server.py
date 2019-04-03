@@ -11,7 +11,7 @@ def run_server(port=8888, folder_path=""):
   
     with socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM) as s:
         s.bind((host, port))
-        s.listen(1) ## max 1 client
+        s.listen(5)
 
         conn, addr = s.accept()
         file_name = conn.recv(1024).decode()
@@ -27,6 +27,9 @@ def run_server(port=8888, folder_path=""):
         print("file name : {FILE}\nsize : {SIZE}".format(FILE=file_path, SIZE=file_size))
         conn.send(str(file_size).encode())
         data = conn.recv(2)
+	
+	if data != "OK":
+            conn.close()		
                 
         with open(os.path.join(folder_path, file_name), mode="rb") as f:
             data = f.read()
