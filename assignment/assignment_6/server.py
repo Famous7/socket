@@ -1,34 +1,42 @@
-import socket
-import threading
+import socket, errno, time, threading
 import argparse
 
-is_alive = {}
+is_alive = None
 
 def recv_msg(conn):
     peer = conn.getpeername()
     data = ""
+    #conn.setblocking(0)
     
-    while data.upper() != "QUIT" or not is_alive[conn.getpeername()]:
-        data = conn.recv(1024).decode()
-        if len(data) != 0:
-            print("From {0}:{1}, {2}".format(peer[0], peer[1], data))
+    global is_alive
+    while data.upper() != "QUIT" and is_alive:
+        data = conn.recv(1024)
+        
+        if not data:
+            print("Connection closed")
+            break
 
-    is_alive[conn.getpeername()] = False
+        print("From {0}:{1}, {2}".format(peer[0], peer[1], data.decode()))
+        
+    is_alive = False
 
 def socket_handler(conn):
-    is_alive[conn.getpeername()] = True
     recv_thread = threading.Thread(target=recv_msg, args=(conn,), daemon=True)
     recv_thread.start()
 
     msg = ""
+
+    global is_alive
     while msg.upper() != "QUIT":
         msg = input()
 
-        if not is_alive[conn.getpeername()]:
+        if not is_alive:
             break
 
         conn.sendall(msg.encode())
-    
+
+    is_alive = False
+
     conn.close()
 
 if __name__ == '__main__':
@@ -42,11 +50,19 @@ if __name__ == '__main__':
     server.listen(5)
 
     while True:
-        conn, addr = server.accept()
-        print('Connected to :', addr[0], ':', addr[1])
+        try:
+            conn, addr = server.accept()
+            is_alive = True
+            
+            print('Connected to :', addr[0], ':', addr[1])
 
-        t = threading.Thread(target=socket_handler, args=(conn,))
-        t.start()
+            socket_handler(conn)
+            #server.close()
+        except KeyboardInterrupt:
+            print("\nexit..")
+            break
+        except socket.error as e:
+            print(e)
+            sys.exit(-1)
 
     server.close()
-
