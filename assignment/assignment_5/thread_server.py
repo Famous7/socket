@@ -8,8 +8,8 @@ def socket_handler(conn):
     # 여기에 클라이언트 소켓에서 데이터를 받고, 보내는 코드 작성 
     # ex) conn.recv(1024)
     data = conn.recv(1024)
-    data = data.decode()[::-1]
-    conn.sendall(data.encode())
+    #data = data.decode()[::-1]
+    conn.sendall(data[::-1])
     conn.close()
   
   
@@ -30,5 +30,6 @@ if __name__ == '__main__':
 
         t = threading.Thread(target=socket_handler, args=(conn,))
         t.start()
+
 
     server.close()

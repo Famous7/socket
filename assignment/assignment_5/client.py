@@ -1,23 +1,21 @@
-import socket, select
-import sys
-import time
+import socket
+import argparse
 
-host = "127.0.0.1"
-port = int(sys.argv[1])
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Echo Cleint -i host -p port")
+    parser.add_argument("-p", help="port_number", required=True)
+    parser.add_argument("-i", help="host_address", required=True)
 
-socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-socket.connect((host, port))
-socket.setblocking(0)
-socs = [socket]
+    args = parser.parse_args()
 
-while True:
-    insds, outsds, errsds = select.select(socs, socs, [])
-    if len(insds) != 0:
-        buf = socket.recv(1024)
-        if len(buf) != 0:
-            print("Receive data : {D}\n".format(D=buf.decode()))
-            
-    if len(outsds) != 0:
-        buf = input(">>>")
-        socket.sendall(buf.encode())
-    time.sleep(0.1)
+    port = int(args.p)
+    host = args.i
+
+    with socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM) as s:
+        s.connect((host, port))
+
+        data = input(">>>")
+        s.sendall(data.encode())
+
+        data = s.recv(len(data))
+        print(data.decode())
