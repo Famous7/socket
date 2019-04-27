@@ -17,7 +17,8 @@ if __name__ == '__main__':
             conn, addr = s.accept()
             print("Connect to {I} : {P}".format(I=addr[0], P=addr[1]))
             msg = conn.recv(1024).decode()
+            print(msg)
             msg = msg[::-1]
-    
+            print(msg)
             conn.sendall(msg.encode())
             conn.close()
