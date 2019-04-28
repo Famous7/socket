@@ -4,6 +4,31 @@ import argparse
 
 ETH_P_ALL = 0x0003
 
+def dumpcode(buf):
+	print("%7s"% "offset ", end='')
+
+	for i in range(0, 16):
+		print("%02x " % i, end='')
+
+		if not (i%16-7):
+			print("- ", end='')
+
+	print("")
+
+	for i in range(0, len(buf)):
+		if not i%16:
+			print("0x%04x" % i, end= ' ')
+
+		print("%02x" % buf[i], end= ' ')
+
+		if not (i % 16 - 7):
+			print("- ", end='')
+
+		if not (i % 16 - 15):
+			print(" ")
+
+	print("")
+
 def sniffing(nic):
 	if os.name == 'nt':
 		address_familiy = socket.AF_INET
@@ -18,11 +43,10 @@ def sniffing(nic):
 		if os.name == 'nt':
 			sniffe_sock.setsockopt(socket.IPPROTO_IP,socket.IP_HDRINCL,1)
 			sniffe_sock.ioctl(socket.SIO_RCVALL,socket.RCVALL_ON)
-		
+
 		data, _ = sniffe_sock.recvfrom(65535)
 
-		for p in data:
-			print("%02x" % p, end=" ")
+		dumpcode(data)
 
 		if os.name == 'nt':
 			sniffe_sock.ioctl(socket.SIO_RCVALL,socket.RCVALL_OFF)
@@ -33,4 +57,3 @@ if __name__ == '__main__':
 	args = parser.parse_args()
 
 	sniffing(args.i)
-
